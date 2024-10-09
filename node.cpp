@@ -4,6 +4,8 @@
 
 const char* ssid = "YOUR_WIFI_NAME";
 const char* password = "YOUR_WIFI_PASSWORD";
+const char* telegramUsername = "@YOUR_TELEGRAM_USERNAME";
+const char* apiKey = "YOUR_CALLMEBOT_API_KEY";
 
 int nodeID = 1;
 
@@ -17,11 +19,22 @@ int totalNodes = 3;
 unsigned long lastHeartbeat = 0;
 int heartbeatInterval = 5000;
 unsigned long lastSeen[3] = {0, 0, 0};
-int deadThreshold = 15000; // node considered dead after 15 seconds
+int deadThreshold = 15000;
 
 bool nodeStatus[3] = {true, true, true};
+bool alertSent[3] = {false, false, false};
 
 WiFiServer server(80);
+
+void sendAlert(String message) {
+  // sending telegram alert
+  WiFiClient client;
+  HTTPClient http;
+  String url = "https://api.callmebot.com/text.php?user=" + String(telegramUsername) + "&apikey=" + String(apiKey) + "&text=" + message;
+  http.begin(client, url);
+  http.GET();
+  http.end();
+}
 
 void sendHeartbeat(String targetIP) {
   WiFiClient client;
@@ -29,15 +42,12 @@ void sendHeartbeat(String targetIP) {
   String url = "http://" + targetIP + "/heartbeat?from=" + String(nodeID);
   http.begin(client, url);
   int httpCode = http.GET();
-  
-  // if node didnt respond mark it as dead
   if (httpCode != 200) {
     int nodeIndex = 0;
     for (int i = 0; i < totalNodes; i++) {
       if (nodeIPs[i] == targetIP) nodeIndex = i;
     }
     nodeStatus[nodeIndex] = false;
-    Serial.println("Node " + String(nodeIndex + 1) + " not responding!");
   }
   http.end();
 }
@@ -49,7 +59,21 @@ void checkDeadNodes() {
         if (nodeStatus[i]) {
           nodeStatus[i] = false;
           Serial.println("NODE " + String(i + 1) + " IS DOWN!");
-          Serial.println("Taking over responsibilities of Node " + String(i + 1));
+
+          // send alert only once per failure
+          if (!alertSent[i]) {
+            alertSent[i] = true;
+            sendAlert("NETWORK ALERT: Node " + String(i + 1) + " is DOWN! Node " + String(nodeID) + " taking over.");
+            Serial.println("Alert sent! Taking over Node " + String(i + 1) + " responsibilities");
+          }
+        }
+      } else {
+        // node came back online
+        if (!nodeStatus[i]) {
+          nodeStatus[i] = true;
+          alertSent[i] = false;
+          Serial.println("Node " + String(i + 1) + " is back online!");
+          sendAlert("Node " + String(i + 1) + " is back ONLINE!");
         }
       }
     }
@@ -64,7 +88,7 @@ void handleClient(WiFiClient client) {
     int fromNode = request.substring(request.indexOf("from=") + 5).toInt();
     nodeStatus[fromNode - 1] = true;
     lastSeen[fromNode - 1] = millis();
-    Serial.println("Heartbeat received from Node " + String(fromNode));
+    Serial.println("Heartbeat from Node " + String(fromNode));
     client.println("HTTP/1.1 200 OK");
     client.println("Content-Type: text/plain");
     client.println();
@@ -72,7 +96,7 @@ void handleClient(WiFiClient client) {
   }
 
   if (request.indexOf("/status") != -1) {
-    String response = "";
+    String response = "Network Status:\n";
     for (int i = 0; i < totalNodes; i++) {
       response += "Node " + String(i + 1) + ": " + (nodeStatus[i] ? "ALIVE" : "DEAD") + "\n";
     }
@@ -97,7 +121,8 @@ void setup() {
 
   lastSeen[nodeID - 1] = millis();
   server.begin();
-  Serial.println("Node " + String(nodeID) + " online and monitoring network...");
+  Serial.println("Node " + String(nodeID) + " online!");
+  sendAlert("Node " + String(nodeID) + " is online and monitoring network.");
 }
 
 void loop() {
@@ -111,12 +136,10 @@ void loop() {
 
     for (int i = 0; i < totalNodes; i++) {
       if (i != nodeID - 1) {
-        Serial.println("Pinging Node " + String(i + 1) + "...");
         sendHeartbeat(nodeIPs[i]);
       }
     }
 
-    // check if any node has gone silent
     checkDeadNodes();
   }
 }
