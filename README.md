@@ -38,5 +38,12 @@ and automatically recover from failures without any human intervention.
 6. Upload to each ESP8266
 7. Open Serial Monitor at 115200 baud on any node to monitor network
 
+## Future Improvements
+- Increase network to 5+ nodes
+- Add data collection on each node with local storage
+- MQTT protocol instead of HTTP for faster communication
+- Web dashboard showing live network topology
+- Battery backup on each node for power failure scenarios
+
 ## Built by
 Gauresh Pathak — Electronics and Telecommunication Engineering Student, Mumbai
