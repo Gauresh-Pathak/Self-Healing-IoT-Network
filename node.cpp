@@ -26,6 +26,25 @@ bool alertSent[3] = {false, false, false};
 
 WiFiServer server(80);
 
+void reconnectWifi() {
+  // retry wifi if disconnected
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi lost! Reconnecting...");
+    WiFi.begin(ssid, password);
+    int attempts = 0;
+    while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+      delay(500);
+      Serial.print(".");
+      attempts++;
+    }
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.println("Reconnected!");
+    } else {
+      Serial.println("Reconnection failed.");
+    }
+  }
+}
+
 void sendAlert(String message) {
   // sending telegram alert
   WiFiClient client;
@@ -60,7 +79,6 @@ void checkDeadNodes() {
           nodeStatus[i] = false;
           Serial.println("NODE " + String(i + 1) + " IS DOWN!");
 
-          // send alert only once per failure
           if (!alertSent[i]) {
             alertSent[i] = true;
             sendAlert("NETWORK ALERT: Node " + String(i + 1) + " is DOWN! Node " + String(nodeID) + " taking over.");
@@ -68,7 +86,6 @@ void checkDeadNodes() {
           }
         }
       } else {
-        // node came back online
         if (!nodeStatus[i]) {
           nodeStatus[i] = true;
           alertSent[i] = false;
@@ -126,6 +143,8 @@ void setup() {
 }
 
 void loop() {
+  reconnectWifi();
+
   WiFiClient client = server.available();
   if (client) {
     handleClient(client);
